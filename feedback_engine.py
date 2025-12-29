@@ -1,13 +1,100 @@
 """
 Feedback Engine Module
-Generates real-time correction feedback based on pose analysis
-purpose:
-Check the current body angles
-Compare with ideal yoga pose angle ranges
-Tell the user what to fix
+Generates real-time correction feedback based on pose analysis.
+
+It now supports two complementary mechanisms:
+- Rule-based feedback and fallback pose recognition using ideal angle ranges.
+- Optional ML-based pose classification if a trained model file is present.
 """
 
-from pose_rules import get_pose_rules, check_angle_in_range, get_angle_deviation, POSE_RULES
+import os
+from typing import Dict, Optional
+
+import numpy as np
+from joblib import load
+
+from pose_rules import (
+    get_pose_rules,
+    check_angle_in_range,
+    get_angle_deviation,
+    POSE_RULES,
+)
+
+
+# Optional ML classifier (RandomForest) trained via `ml_model.py`
+_MODEL_PATH = os.path.join(os.path.dirname(__file__), "pose_classifier.joblib")
+_POSE_MODEL = None
+
+
+def _load_pose_model():
+    global _POSE_MODEL
+    if _POSE_MODEL is not None:
+        return _POSE_MODEL
+    if not os.path.exists(_MODEL_PATH):
+        return None
+    try:
+        _POSE_MODEL = load(_MODEL_PATH)
+        return _POSE_MODEL
+    except Exception:
+        # If loading fails, fall back silently to rule-based logic
+        _POSE_MODEL = None
+        return None
+
+
+def _angles_to_vector_for_model(angles: Dict) -> Optional[np.ndarray]:
+    """
+    Convert angles dict into feature vector using the order stored with the model.
+    Returns None if the model is missing its feature metadata.
+    """
+    model_bundle = _load_pose_model()
+    if not model_bundle:
+        return None
+
+    feature_order = model_bundle.get("feature_order")
+    if not feature_order:
+        return None
+
+    vec = []
+    # Two supported formats for backward compatibility:
+    # 1) List[Tuple[joint, side]] from older image-based trainer
+    # 2) List[str] of feature names like "knee_left", "spine" from CSV trainer
+    first_item = feature_order[0]
+
+    if isinstance(first_item, tuple):
+        # Old format: (joint, side)
+        for joint, side in feature_order:
+            joint_dict = angles.get(joint) or {}
+            value = None
+            if isinstance(joint_dict, dict):
+                value = joint_dict.get(side)
+            if value is None:
+                value = 0.0
+            vec.append(float(value))
+
+        spine_angle = angles.get("spine")
+        if spine_angle is None:
+            spine_angle = 0.0
+        vec.append(float(spine_angle))
+    else:
+        # New format: feature names
+        for name in feature_order:
+            if name.lower() == "spine":
+                value = angles.get("spine")
+            else:
+                # Expect "<joint>_<side>", e.g. "knee_left"
+                parts = name.split("_", 1)
+                if len(parts) == 2:
+                    joint, side = parts
+                    joint_dict = angles.get(joint) or {}
+                    value = joint_dict.get(side) if isinstance(joint_dict, dict) else None
+                else:
+                    value = None
+
+            if value is None:
+                value = 0.0
+            vec.append(float(value))
+
+    return np.asarray([vec], dtype=np.float32)
 
 
 class FeedbackEngine:
@@ -163,69 +250,34 @@ class FeedbackEngine:
 
 def recognize_pose(angles, landmarks):
     """
-    Recognize yoga pose based on angles and landmarks
-    
-    Args:
-        angles: Dictionary of calculated angles
-        landmarks: Dictionary of landmark positions
-        
-    Returns:
-        str: Name of recognized pose or "Unknown"
-        After feedback, the code also tries to identify which pose the user is performing.
+    Recognize yoga pose based on angles and landmarks.
+
+    Strategy:
+    1. If a trained ML model (RandomForest) is available, use it first.
+    2. Fall back to existing rule-based heuristics if the model is missing
+       or cannot make a confident prediction.
     """
     if not angles or not landmarks:
         return "Unknown"
-    
-    # Simple pose recognition based on key angle patterns
-    knee_angles = angles.get('knee', {})
-    hip_angles = angles.get('hip', {})
-    shoulder_angles = angles.get('shoulder', {})
-    spine_angle = angles.get('spine')
-    
-    # Check if all key points are visible
-    required_landmarks = ['left_shoulder', 'right_shoulder', 'left_hip', 
-                         'right_hip', 'left_knee', 'right_knee']
-    if not all(key in landmarks for key in required_landmarks):
-        return "Unknown"
-    
-    # Mountain Pose: All joints nearly straight, spine vertical
-    if (knee_angles.get('left') and knee_angles.get('right') and
-        knee_angles['left'] > 170 and knee_angles['right'] > 170 and
-        spine_angle and 85 <= spine_angle <= 95):
-        return "Mountain Pose"
-    
-    # Tree Pose: One leg bent to side
-    left_knee = knee_angles.get('left', 180)
-    right_knee = knee_angles.get('right', 180)
-    left_hip = hip_angles.get('left', 180)
-    right_hip = hip_angles.get('right', 180)
-    
-    # Check if one leg is significantly more bent
-    if (abs(left_knee - right_knee) > 60 or abs(left_hip - right_hip) > 60):
-        if (left_knee < 120 or right_knee < 120):
-            return "Tree Pose"
-    
-    # Warrior I: Front leg bent, back leg straight
-    if (knee_angles.get('left') and knee_angles.get('right')):
-        if ((knee_angles['left'] < 130 and knee_angles['right'] > 170) or
-            (knee_angles['right'] < 130 and knee_angles['left'] > 170)):
-            return "Warrior I"
-    
-    # Warrior II: Similar to Warrior I but with arms extended
-    if (knee_angles.get('left') and knee_angles.get('right') and
-        shoulder_angles.get('left') and shoulder_angles.get('right')):
-        if ((knee_angles['left'] < 130 and knee_angles['right'] > 170) or
-            (knee_angles['right'] < 130 and knee_angles['left'] > 170)):
-            if (shoulder_angles['left'] < 150 or shoulder_angles['right'] < 150):
-                return "Warrior II"
-    
-    # Triangle Pose: Both legs straight, spine leaning
-    if (knee_angles.get('left') and knee_angles.get('right') and
-        knee_angles['left'] > 170 and knee_angles['right'] > 170 and
-        spine_angle and spine_angle < 90):
-        return "Triangle Pose"
-    
-    # Fallback: choose pose with smallest average angle deviation
+
+    # Try ML model first (if present)
+    model_bundle = _load_pose_model()
+    if model_bundle is not None:
+        vec = _angles_to_vector_for_model(angles)
+        if vec is not None:
+            scaler = model_bundle.get("scaler")
+            clf = model_bundle.get("model")
+            classes = model_bundle.get("classes")
+            if scaler is not None and clf is not None and classes:
+                vec_scaled = scaler.transform(vec)
+                pred_idx = clf.predict(vec_scaled)[0]
+                try:
+                    return classes[int(pred_idx)]
+                except (IndexError, ValueError):
+                    pass  # fall back to rules
+
+    # --- Rule-based recognition using POSE_RULES ---
+    # Choose the pose whose ideal angle rules deviate the least from current angles.
     best_pose = None
     best_score = float("inf")
 

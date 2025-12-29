@@ -100,7 +100,6 @@ class SignInWindow:
             fg="#dcdde1",
         )
         signup_prompt.pack()
-
         signup_btn = ttk.Button(card, text="Create Account", command=self.open_sign_up)
         signup_btn.pack(fill=tk.X, pady=5)
 
@@ -252,3 +251,6 @@ def sign_in_window():
 
 if __name__ == "__main__":
     sign_in_window()
+
+
+

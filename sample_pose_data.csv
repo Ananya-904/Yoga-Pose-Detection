@@ -1,0 +1,11 @@
+knee_left,knee_right,elbow_left,elbow_right,shoulder_left,shoulder_right,hip_left,hip_right,spine,label
+180,178,175,176,175,174,178,177,90,Mountain Pose
+176,179,172,173,170,171,179,178,92,Mountain Pose
+88,176,175,175,178,177,110,175,88,Warrior I
+92,178,174,176,176,175,115,178,86,Warrior I
+180,180,175,176,95,92,178,179,65,Triangle Pose
+179,179,173,174,100,98,176,177,70,Triangle Pose
+178,179,174,175,175,176,178,179,110,Downward Dog
+170,172,170,171,162,163,105,107,115,Downward Dog
+
+

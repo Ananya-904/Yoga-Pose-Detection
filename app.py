@@ -2,8 +2,6 @@
 Yoga AI Pose Detection and Correction Application
 Main Tkinter GUI application with image upload
 """
-# cd "C:\Users\isha choudhary\OneDrive\Desktop\minor project\yoga_ai"
-# py -3.11 app.py
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -20,32 +18,45 @@ from pose_rules import get_all_pose_names
 
 
 class YogaAIApp:
-    def __init__(self, root):
+    def __init__(self, root, on_logout=None):
         """Initialize the main application"""
         self.root = root
+        self.on_logout = on_logout
         self.root.title("Yoga AI - Pose Detection & Correction")
         self.root.geometry("1200x900")
         self.root.configure(bg='#2c3e50')
         self.root.minsize(1000, 700)
-        
+
         # Initialize components
-        self.pose_detector = PoseDetector(smoothing_window=5)
+        # Two detectors: streaming for webcam, static for photo uploads
+        self.pose_detector_stream = PoseDetector(
+            smoothing_window=5, static_image_mode=False
+        )
+        self.pose_detector_static = PoseDetector(
+            smoothing_window=5, static_image_mode=True
+        )
         self.feedback_engine = FeedbackEngine()
         self.skeleton_drawer = SkeletonDrawer()
-        
+
+        # Webcam state
+        self.cap = None
+        self.is_camera_running = False
+        self.webcam_job = None
+        self.webcam_failures = 0
+
         # Image tracking
         self.current_image = None
         self.current_image_path = None
-        
+
         # Pose tracking
         self.current_pose = "Unknown"
         self.current_angles = {}
         self.current_landmarks = {}
         self.confidence = 0.0
-        
+
         # Setup UI
         self.setup_ui()
-        
+
         # Bind close event
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
     
@@ -68,7 +79,20 @@ class YogaAIApp:
         # Control buttons - Put them at the TOP for visibility
         button_frame = tk.Frame(left_panel, bg='#34495e')
         button_frame.pack(pady=15, padx=10, fill=tk.X)
-        
+
+        self.webcam_button = tk.Button(
+            button_frame,
+            text="🎥 Start Webcam",
+            command=self.toggle_webcam,
+            bg="#8e44ad",
+            fg="white",
+            font=("Arial", 14, "bold"),
+            width=18,
+            height=2,
+            cursor="hand2",
+        )
+        self.webcam_button.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
+
         self.upload_button = tk.Button(button_frame, text="📷 Upload Photo", 
                                       command=self.upload_image,
                                       bg='#3498db', fg='white',
@@ -94,6 +118,15 @@ class YogaAIApp:
                                      state=tk.DISABLED,
                                      cursor='hand2')
         self.clear_button.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
+
+        self.webcam_status = tk.Label(
+            left_panel,
+            text="Webcam idle",
+            bg="#34495e",
+            fg="#bdc3c7",
+            font=("Arial", 11, "italic"),
+        )
+        self.webcam_status.pack(pady=(0, 10))
         
         # Image display
         self.image_label = tk.Label(left_panel, bg='#1a1a1a', 
@@ -180,6 +213,9 @@ class YogaAIApp:
     
     def upload_image(self):
         """Upload and display an image"""
+        if self.is_camera_running:
+            self.stop_webcam()
+
         file_path = filedialog.askopenfilename(
             title="Select a Yoga Pose Image",
             filetypes=[
@@ -258,21 +294,37 @@ class YogaAIApp:
             frame = self.current_image.copy()
             
             # Detect pose
-            landmarks, confidence, mp_landmarks = self.pose_detector.detect(frame)
+            # For static photos, use the static-image detector
+            # Upscale small images to help MediaPipe detect full body
+            h, w = frame.shape[:2]
+            min_side = min(h, w)
+            if min_side < 480:
+                scale = 480 / min_side
+                new_w, new_h = int(w * scale), int(h * scale)
+                frame = cv2.resize(frame, (new_w, new_h))
+
+            landmarks, confidence, mp_landmarks = self.pose_detector_static.detect(frame)
             self.confidence = confidence
             
             if not landmarks:
-                messagebox.showinfo("No Pose Detected", 
-                                  "Could not detect a pose in the image.\n\n"
-                                  "Please ensure:\n"
-                                  "• The person is clearly visible\n"
-                                  "• The image shows a full body view\n"
-                                  "• There is good lighting")
+                messagebox.showinfo(
+                    "No Pose Detected",
+                    "Could not detect a pose in the image.\n\n"
+                    "Please ensure:\n"
+                    "• The person is clearly visible\n"
+                    "• The image shows a full body view\n"
+                    "• There is good lighting\n"
+                    "• Try a higher-resolution image if available",
+                )
                 return
             
             # Calculate angles
             self.current_landmarks = landmarks
-            self.current_angles = calculate_all_angles(landmarks)
+            calculated_angles = calculate_all_angles(landmarks)
+            self.current_angles = calculated_angles if calculated_angles else {}
+            for joint in ["knee", "elbow", "shoulder", "hip"]:
+                if self.current_angles.get(joint) is None:
+                    self.current_angles[joint] = {}
             
             # Recognize pose if auto-detect is selected
             if self.pose_var.get() == "Auto-Detect":
@@ -308,6 +360,8 @@ class YogaAIApp:
     
     def clear_image(self):
         """Clear the current image and reset"""
+        if self.is_camera_running:
+            self.stop_webcam()
         self.current_image = None
         self.current_image_path = None
         self.current_pose = "Unknown"
@@ -335,6 +389,130 @@ class YogaAIApp:
             # Re-analyze if image is loaded
             if self.current_image is not None:
                 self.analyze_pose()
+    
+    def toggle_webcam(self):
+        """Start or stop webcam streaming and live analysis"""
+        if self.is_camera_running:
+            self.stop_webcam()
+        else:
+            self.start_webcam()
+
+    def start_webcam(self):
+        """Initialize webcam capture and start processing loop"""
+        try:
+            # Prefer DirectShow on Windows to avoid long startup delays
+            self.cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+            if not self.cap.isOpened():
+                # Fallback to default backend
+                self.cap.release()
+                self.cap = cv2.VideoCapture(0)
+
+            if not self.cap.isOpened():
+                raise RuntimeError("Could not access webcam. Is it connected and free?")
+
+            # Prefer a reasonable resolution for clarity
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 960)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+            self.is_camera_running = True
+            self.webcam_button.config(text="⏹ Stop Webcam", bg="#c0392b")
+            self.webcam_status.config(text="Webcam running - align yourself in view", fg="#2ecc71")
+            self.webcam_failures = 0
+
+            # Disable manual image actions while streaming
+            self.upload_button.config(state=tk.DISABLED)
+            self.analyze_button.config(state=tk.DISABLED)
+            self.clear_button.config(state=tk.NORMAL)
+
+            self.pose_detector_stream.reset_smoothing()
+            self.process_webcam_frame()
+        except Exception as exc:
+            self.is_camera_running = False
+            self.cap = None
+            messagebox.showerror("Webcam Error", str(exc))
+
+    def stop_webcam(self):
+        """Stop webcam loop and release resources"""
+        self.is_camera_running = False
+        if self.webcam_job:
+            self.root.after_cancel(self.webcam_job)
+            self.webcam_job = None
+        if self.cap:
+            self.cap.release()
+            self.cap = None
+
+        self.webcam_button.config(text="🎥 Start Webcam", bg="#8e44ad")
+        self.webcam_status.config(text="Webcam idle", fg="#bdc3c7")
+        self.upload_button.config(state=tk.NORMAL)
+        self.analyze_button.config(state=tk.DISABLED)
+
+    def process_webcam_frame(self):
+        """Read a frame from webcam, run detection, and update UI"""
+        if not self.is_camera_running or not self.cap:
+            return
+
+        try:
+            ret, frame = self.cap.read()
+            if not ret:
+                self.webcam_failures += 1
+                if self.webcam_failures >= 3:
+                    self.stop_webcam()
+                    messagebox.showerror(
+                        "Webcam Error",
+                        "Webcam is not responding. Please ensure no other app is using it, then restart.",
+                    )
+                    return
+                # Retry after a short delay
+                self.webcam_job = self.root.after(100, self.process_webcam_frame)
+                return
+
+            # Reset failure counter on success
+            self.webcam_failures = 0
+
+            frame = cv2.flip(frame, 1)  # mirror for a natural experience
+
+            landmarks, confidence, mp_landmarks = self.pose_detector_stream.detect(frame)
+            self.confidence = confidence
+
+            angles = {}
+            feedback_messages = []
+            detected_pose = "Unknown"
+
+            if landmarks:
+                calculated_angles = calculate_all_angles(landmarks)
+                angles = calculated_angles if calculated_angles else {}
+                for joint in ["knee", "elbow", "shoulder", "hip"]:
+                    if angles.get(joint) is None:
+                        angles[joint] = {}
+                selected_pose = self.pose_var.get()
+                if selected_pose == "Auto-Detect":
+                    detected_pose = recognize_pose(angles, landmarks)
+                else:
+                    detected_pose = selected_pose
+
+                self.current_pose = detected_pose
+                self.detected_pose_label.config(text=detected_pose)
+
+                # Draw overlays
+                frame = self.skeleton_drawer.draw_skeleton(frame, landmarks)
+                frame = self.skeleton_drawer.draw_angles(frame, angles, landmarks)
+                frame = self.skeleton_drawer.draw_confidence(frame, confidence)
+                frame = self.skeleton_drawer.draw_pose_name(frame, detected_pose)
+
+                feedback_messages = self.feedback_engine.analyze_pose(
+                    landmarks, angles, detected_pose
+                )
+            else:
+                feedback_messages = ["Move fully into the camera frame and ensure good lighting."]
+
+            self.display_image(frame)
+            self.update_ui(confidence, angles, feedback_messages)
+
+            # schedule next frame
+            self.webcam_job = self.root.after(15, self.process_webcam_frame)
+        except Exception as exc:
+            self.stop_webcam()
+            messagebox.showerror("Webcam Error", f"Unexpected issue: {exc}")
     
     def update_ui(self, confidence, angles, feedback_messages):
         """Update UI elements with current data"""
@@ -403,7 +581,11 @@ class YogaAIApp:
     
     def on_closing(self):
         """Handle window closing"""
-        self.root.destroy()
+        self.stop_webcam()
+        if callable(self.on_logout):
+            self.on_logout()
+        else:
+            self.root.destroy()
 
 
 def main():

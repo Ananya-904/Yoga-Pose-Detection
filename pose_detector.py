@@ -10,22 +10,24 @@ from collections import deque
 
 
 class PoseDetector:
-    def __init__(self, smoothing_window=5):
+    def __init__(self, smoothing_window=5, static_image_mode=False):
         """
         Initialize MediaPipe Pose detector
-        
+
         Args:
             smoothing_window: Number of frames for moving average smoothing
+            static_image_mode: Whether detector should treat each frame as static.
         """
         self.mp_pose = mp.solutions.pose
+        # Use stream-friendly defaults; caller can opt into static mode for photos.
         self.pose = self.mp_pose.Pose(
-            static_image_mode=True,  # Better for single images
+            static_image_mode=static_image_mode,
             model_complexity=1,
             smooth_landmarks=True,
             enable_segmentation=False,
             smooth_segmentation=False,
             min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
+            min_tracking_confidence=0.5,
         )
         self.mp_drawing = mp.solutions.drawing_utils
         
