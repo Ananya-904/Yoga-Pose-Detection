@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+
+venv/
+env/
+python.exe
+pythonw.exe
+pyvenv.cfg
+
+.vscode/
+tempCodeRunnerFile.py
+
+.env

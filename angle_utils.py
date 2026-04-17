@@ -51,7 +51,7 @@ def get_point(landmarks, key):
         
     Returns:
         (x, y) tuple or None if not found
-        ✔ Purpose:
+         Purpose:
 purpose:
 Extract landmark coordinates safely.
 Why needed?
