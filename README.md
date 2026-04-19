@@ -8,7 +8,7 @@ Built a computer vision based Yoga Pose Detection system that classifies human p
 ## Key Highlights  
 - Developed an image classification model for multiple yoga poses  
 - Applied data preprocessing and augmentation to improve model generalization  
-- Implemented an end-to-end ML pipeline: data → training → evaluation → prediction  
+- Implemented an end-to-end ML pipeline: data -> training -> evaluation -> prediction  
 
 ---
 
@@ -31,5 +31,7 @@ Built a computer vision based Yoga Pose Detection system that classifies human p
 ## Results  
 - Model successfully classifies yoga poses with strong performance on test data  
 - Demonstrates understanding of deep learning workflows and model optimization  
+
+
 
 
