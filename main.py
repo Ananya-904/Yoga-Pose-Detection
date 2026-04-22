@@ -1,5 +1,7 @@
 """
 Tkinter Sign-In / Sign-Up system with JSON persistence.
+Code below implements a simple authentication flow using Tkinter for the UI and JSON for storing user data. It includes:
+- Sign-In Window: Allows existing users to log in with email and password.
 """
 
 import json
