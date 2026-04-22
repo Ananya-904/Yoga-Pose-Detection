@@ -1,6 +1,15 @@
 """
 Yoga AI Pose Detection and Correction Application
 Main Tkinter GUI application with image upload
+and webcam streaming capabilities. Integrates pose detection, angle calculation,
+and feedback generation for yoga poses. Provides a user-friendly interface for users to interact with the application.
+Features:
+- Image Upload: Users can upload photos of themselves performing yoga poses for analysis.
+- Webcam Streaming: Real-time pose detection and feedback using the webcam.
+- Pose Recognition: Automatically identifies the yoga pose being performed.
+- Angle Calculation: Computes joint angles for key body parts to assess pose accuracy.
+- Feedback Generation: Provides actionable feedback to help users improve their poses.
+- User Authentication: Simple sign-in/sign-up system to manage user accounts.
 """
 
 import tkinter as tk
