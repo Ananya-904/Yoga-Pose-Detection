@@ -48,6 +48,7 @@ class YogaAIApp:
         self.skeleton_drawer = SkeletonDrawer()
 
         # Webcam state
+        # We will initialize the webcam capture object when starting the webcam to avoid issues on some systems where it may not be available at startup
         self.cap = None
         self.is_camera_running = False
         self.webcam_job = None
