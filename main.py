@@ -104,10 +104,11 @@ class SignInWindow:
         signup_prompt.pack()
         signup_btn = ttk.Button(card, text="Create Account", command=self.open_sign_up)
         signup_btn.pack(fill=tk.X, pady=5)
-
+    # Open the sign-up window and hide the sign-in window.
     def open_sign_up(self):
         sign_up_window(self.root)
 
+    # Handle the sign-in logic, including validation and user authentication.
     def handle_sign_in(self):
         email = self.email_var.get().strip().lower()
         password = self.password_var.get().strip()
