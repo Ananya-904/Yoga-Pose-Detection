@@ -15,14 +15,14 @@ from app import YogaAIApp
 USERS_FILE = "users.json"
 EMAIL_PATTERN = re.compile(r"^[\w\.-]+@[\w\.-]+\.\w+$")
 
-
+# Utility functions for user data management
 def ensure_users_file():
     """Ensure the JSON file exists."""
     if not os.path.exists(USERS_FILE):
         with open(USERS_FILE, "w", encoding="utf-8") as f:
             json.dump([], f, indent=2)
 
-
+# Load users from JSON file, returning a list of user dictionaries.
 def load_users():
     """Load all registered users."""
     ensure_users_file()
@@ -33,20 +33,20 @@ def load_users():
         except json.JSONDecodeError:
             return []
 
-
+# Save the updated list of users back to the JSON file.
 def save_users(users):
     """Writes the updated list back to JSON.
     Persist users to JSON."""
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         json.dump(users, f, indent=2)
 
-
+# Check if the provided email is already registered in the system.
 def email_exists(email):
     """Check if email already registered."""
     email = email.lower()
     return any(user["email"] == email for user in load_users())
 
-
+# Validate the email format using a regular expression pattern.
 def validate_email(email):
     """Uses REGEX to check if email is valid:
     Validate email format."""
