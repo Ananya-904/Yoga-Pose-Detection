@@ -12,6 +12,7 @@ Features:
 - User Authentication: Simple sign-in/sign-up system to manage user accounts.
 """
 
+# Importing Libraries
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import cv2
