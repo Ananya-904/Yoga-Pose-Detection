@@ -36,7 +36,7 @@ from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
-
+# Suppress warnings for cleaner output
 def load_csv_dataset(csv_path: str) -> Tuple[np.ndarray, np.ndarray, List[str], List[str]]:
     """
     Load dataset from a CSV file.
@@ -63,7 +63,7 @@ def load_csv_dataset(csv_path: str) -> Tuple[np.ndarray, np.ndarray, List[str], 
 
     return X, y, list(encoder.classes_), feature_cols
 
-
+# Main training function
 def train_pose_classifier(
     csv_path: str,
     model_path: str = "pose_classifier.joblib",
