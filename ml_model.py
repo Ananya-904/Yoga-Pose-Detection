@@ -108,7 +108,7 @@ def train_pose_classifier(
     dump(bundle, model_path)
     print(f"[INFO] Saved trained model to: {model_path}")
 
-
+# Command-line interface
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train yoga pose classifier from CSV.")
     parser.add_argument(
@@ -125,7 +125,7 @@ def main() -> None:
     args = parser.parse_args()
     train_pose_classifier(args.csv_path, args.model_path)
 
-
+# Entry point
 if __name__ == "__main__":
     main()
 
