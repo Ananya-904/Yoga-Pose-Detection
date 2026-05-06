@@ -7,7 +7,6 @@ import cv2
 import numpy as np
 
 
-
 class SkeletonDrawer:
     def __init__(self):
         """Initialize skeleton drawer with color scheme"""
@@ -43,12 +42,15 @@ class SkeletonDrawer:
             ('right_shoulder', 'right_hip'),
         ]
     
+    # Helper function to get point coordinates from landmarks
     def get_point(self, landmarks, key):
         """Extract point coordinates from landmarks"""
         if key in landmarks and landmarks[key]['visibility'] > 0.5:
             return (int(landmarks[key]['x']), int(landmarks[key]['y']))
         return None
     
+
+    # Main function to draw skeleton on frame
     def draw_skeleton(self, frame, landmarks):
         """
         Draw skeleton connections on frame
